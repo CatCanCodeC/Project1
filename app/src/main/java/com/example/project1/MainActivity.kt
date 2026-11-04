@@ -101,6 +101,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         refreshUsageData()
+        // Pastikan layanan pemantau otomatis aktif jika izin sudah diberikan dan opsi monitoring aktif
+        if (PermissionHelper.hasUsageStatsPermission(context) && PreferencesHelper.isMonitoringActive(context)) {
+            UsageMonitorService.startService(context)
+        }
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -109,13 +113,24 @@ fun MainScreen(modifier: Modifier = Modifier) {
         hasNotificationPermission = isGranted
         if (isGranted) {
             Toast.makeText(context, "Izin notifikasi diberikan!", Toast.LENGTH_SHORT).show()
+            if (hasUsagePermission && isMonitoringActive) {
+                UsageMonitorService.startService(context)
+            }
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Pengingat Media Sosial", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        text = "Halo, bisakah saya mengingat waktu Anda?",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        maxLines = 2,
+                        lineHeight = 22.sp
+                    )
+                },
                 actions = {
                     IconButton(onClick = { refreshUsageData() }) {
                         Text("🔄", fontSize = 18.sp)
@@ -170,6 +185,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                                     onClick = {
                                         coroutineScope.launch {
                                             UsageStatsHelper.resetAllAppsUsage(context)
+                                            UsageMonitorService.clearNotificationCooldown(context, "")
                                             refreshUsageData()
                                             Toast.makeText(context, "Semua durasi penggunaan berhasil di-reset ke 0!", Toast.LENGTH_SHORT).show()
                                         }
@@ -215,13 +231,26 @@ fun MainScreen(modifier: Modifier = Modifier) {
             item {
                 PermissionCard(
                     title = "Izin Notifikasi",
-                    description = "Diperlukan untuk mengirim peringatan saat waktu habis.",
+                    description = "Diperlukan untuk mengirim peringatan saat batas waktu tercapai.",
                     isGranted = hasNotificationPermission,
                     onRequestPermission = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
-                    }
+                    },
+                    extraAction = if (hasNotificationPermission) {
+                        {
+                            OutlinedButton(
+                                onClick = {
+                                    UsageMonitorService.sendTestNotification(context)
+                                    Toast.makeText(context, "Notifikasi uji coba dikirim!", Toast.LENGTH_SHORT).show()
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("🔔 Tes Notifikasi", fontSize = 11.sp)
+                            }
+                        }
+                    } else null
                 )
             }
 
@@ -259,7 +288,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = if (isMonitoringActive) "Pemantauan aktif & siap memunculkan pop-up batas waktu" else "Pemantauan dinonaktifkan",
+                                text = if (isMonitoringActive) "Pemantauan aktif & siap memberi peringatan saat batas tercapai" else "Pemantauan dinonaktifkan",
                                 fontSize = 12.sp
                             )
                         }
@@ -327,11 +356,13 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         onLimitChanged = { newLimit ->
                             PreferencesHelper.setAppLimit(context, app.packageName, newLimit)
                             appLimits[app.packageName] = newLimit
+                            UsageMonitorService.clearNotificationCooldown(context, app.packageName)
                             refreshUsageData()
                         },
                         onResetUsage = {
                             coroutineScope.launch {
                                 UsageStatsHelper.resetAppUsage(context, app.packageName)
+                                UsageMonitorService.clearNotificationCooldown(context, app.packageName)
                                 refreshUsageData()
                                 Toast.makeText(context, "Durasi ${app.appName} di-reset ke 0 menit!", Toast.LENGTH_SHORT).show()
                             }
@@ -339,6 +370,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
                         onResetDefaultLimit = {
                             PreferencesHelper.resetAppLimitToDefault(context, app.packageName)
                             appLimits[app.packageName] = 30
+                            UsageMonitorService.clearNotificationCooldown(context, app.packageName)
                             refreshUsageData()
                             Toast.makeText(context, "Batas ${app.appName} dikembalikan ke 30 menit", Toast.LENGTH_SHORT).show()
                         },
@@ -359,7 +391,8 @@ fun PermissionCard(
     title: String,
     description: String,
     isGranted: Boolean,
-    onRequestPermission: () -> Unit
+    onRequestPermission: () -> Unit,
+    extraAction: @Composable (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -390,6 +423,9 @@ fun PermissionCard(
                 ) {
                     Text("Izinkan", fontSize = 12.sp)
                 }
+            } else if (extraAction != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                extraAction()
             }
         }
     }
@@ -423,7 +459,7 @@ fun SocialAppItem(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Icon Aplikasi (Langsung menggunakan Bitmap yang di-cache di IO Thread)
+                // Icon Aplikasi (Menggunakan Bitmap yang di-cache di IO Thread)
                 Box(
                     modifier = Modifier
                         .size(44.dp)

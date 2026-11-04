@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 object PermissionHelper {
@@ -74,10 +75,10 @@ object PermissionHelper {
     }
 
     /**
-     * Memeriksa izin Notifikasi pada Android 13 (API 33)+.
+     * Memeriksa izin Notifikasi pada Android 13 (API 33)+ serta status aktif notifikasi di sistem.
      */
     fun hasNotificationPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val hasRuntimePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(
                 context,
                 android.Manifest.permission.POST_NOTIFICATIONS
@@ -85,5 +86,6 @@ object PermissionHelper {
         } else {
             true
         }
+        return hasRuntimePermission && NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }

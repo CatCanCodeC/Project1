@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Project 1"
+rootProject.name = "Your Time"
 include(":app")

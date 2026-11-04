@@ -18,10 +18,10 @@ object PreferencesHelper {
     }
 
     /**
-     * Status aktif/tidaknya layanan pemantauan latar belakang.
+     * Status aktif/tidaknya layanan pemantauan latar belakang (default: true).
      */
     fun isMonitoringActive(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_MONITORING_ACTIVE, false)
+        return getPrefs(context).getBoolean(KEY_MONITORING_ACTIVE, true)
     }
 
     fun setMonitoringActive(context: Context, active: Boolean) {
